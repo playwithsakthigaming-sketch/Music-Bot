@@ -11,12 +11,13 @@ from music import MusicPlayer
 from spotify import SpotifyManager
 
 
+# ==================================================
+# Environment
+# ==================================================
+
 load_dotenv()
 
-
-TOKEN = os.getenv(
-    "DISCORD_TOKEN"
-)
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 SPOTIFY_CLIENT_ID = os.getenv(
     "SPOTIFY_CLIENT_ID"
@@ -26,9 +27,7 @@ SPOTIFY_CLIENT_SECRET = os.getenv(
     "SPOTIFY_CLIENT_SECRET"
 )
 
-GUILD_ID = os.getenv(
-    "GUILD_ID"
-)
+GUILD_ID = os.getenv("GUILD_ID")
 
 
 if not TOKEN:
@@ -37,12 +36,17 @@ if not TOKEN:
     )
 
 
+# ==================================================
+# Discord Bot
+# ==================================================
+
 intents = discord.Intents.default()
 
 
 class MusicBot(commands.Bot):
 
     def __init__(self):
+
         super().__init__(
             command_prefix="!",
             intents=intents,
@@ -64,6 +68,7 @@ class MusicBot(commands.Bot):
     ) -> MusicPlayer:
 
         if guild_id not in self.players:
+
             self.players[guild_id] = (
                 MusicPlayer(self)
             )
@@ -154,9 +159,11 @@ async def get_player_for_interaction(
 ) -> Optional[MusicPlayer]:
 
     if not interaction.guild:
+
         await interaction.followup.send(
             "❌ This command can only be used in a server."
         )
+
         return None
 
     channel = get_voice_channel(
@@ -164,9 +171,11 @@ async def get_player_for_interaction(
     )
 
     if not channel:
+
         await interaction.followup.send(
             "❌ First join a voice channel."
         )
+
         return None
 
     player = bot.get_player(
@@ -174,13 +183,15 @@ async def get_player_for_interaction(
     )
 
     try:
+
         await player.connect(channel)
 
     except Exception as exc:
 
         await interaction.followup.send(
             "❌ I couldn't join your "
-            f"voice channel.\n`{exc}`"
+            "voice channel.\n"
+            f"`{exc}`"
         )
 
         return None
@@ -188,7 +199,9 @@ async def get_player_for_interaction(
     return player
 
 
-def format_time(seconds: int) -> str:
+def format_time(
+    seconds: int,
+) -> str:
 
     if not seconds:
         return "Unknown"
@@ -204,6 +217,7 @@ def format_time(seconds: int) -> str:
     )
 
     if hours:
+
         return (
             f"{hours}:{minutes:02d}:"
             f"{seconds:02d}"
@@ -214,30 +228,28 @@ def format_time(seconds: int) -> str:
     )
 
 
-def spotify_embed(
-    title: str,
-    artist: str,
-    source: str,
-):
-    embed = discord.Embed(
-        title="🎧 Spotify",
-        description=(
-            f"**{title}**\n"
-            f"by {artist}"
-        ),
+def is_admin(
+    interaction: discord.Interaction,
+) -> bool:
+
+    if not isinstance(
+        interaction.user,
+        discord.Member,
+    ):
+        return False
+
+    permissions = (
+        interaction.user.guild_permissions
     )
 
-    embed.add_field(
-        name="Source",
-        value=source,
-        inline=True,
+    return (
+        permissions.administrator
+        or permissions.manage_guild
     )
-
-    return embed
 
 
 # ==================================================
-# Player buttons
+# Player Buttons
 # ==================================================
 
 
@@ -247,6 +259,7 @@ class PlayerView(discord.ui.View):
         self,
         guild_id: int,
     ):
+
         super().__init__(
             timeout=300
         )
@@ -254,6 +267,7 @@ class PlayerView(discord.ui.View):
         self.guild_id = guild_id
 
     def player(self):
+
         return bot.get_player(
             self.guild_id
         )
@@ -271,11 +285,14 @@ class PlayerView(discord.ui.View):
         player = self.player()
 
         if await player.pause():
+
             await interaction.response.send_message(
                 "⏸️ Paused.",
                 ephemeral=True,
             )
+
         else:
+
             await interaction.response.send_message(
                 "❌ Nothing is playing.",
                 ephemeral=True,
@@ -294,11 +311,14 @@ class PlayerView(discord.ui.View):
         player = self.player()
 
         if await player.resume():
+
             await interaction.response.send_message(
                 "▶️ Resumed.",
                 ephemeral=True,
             )
+
         else:
+
             await interaction.response.send_message(
                 "❌ Music isn't paused.",
                 ephemeral=True,
@@ -317,11 +337,14 @@ class PlayerView(discord.ui.View):
         player = self.player()
 
         if await player.skip():
+
             await interaction.response.send_message(
                 "⏭️ Skipped.",
                 ephemeral=True,
             )
+
         else:
+
             await interaction.response.send_message(
                 "❌ Nothing is playing.",
                 ephemeral=True,
@@ -337,13 +360,24 @@ class PlayerView(discord.ui.View):
         button: discord.ui.Button,
     ):
 
+        if not is_admin(interaction):
+
+            await interaction.response.send_message(
+                "❌ Admin / Manage Server permission required.",
+                ephemeral=True,
+            )
+
+            return
+
         player = self.player()
 
         if len(player.queue) < 2:
+
             await interaction.response.send_message(
                 "❌ Need at least 2 queued songs.",
                 ephemeral=True,
             )
+
             return
 
         player.shuffle()
@@ -411,9 +445,9 @@ async def play(
 
     query = query.strip()
 
-    # ----------------------------------------------
+    # ==================================================
     # Spotify
-    # ----------------------------------------------
+    # ==================================================
 
     if bot.spotify.is_spotify_url(query):
 
@@ -454,20 +488,21 @@ async def play(
 
             return
 
-        # Safety limit for huge playlists.
+        # Safety limit
         max_tracks = 100
 
         original_count = len(tracks)
 
         tracks = tracks[:max_tracks]
 
+        note = ""
+
         if original_count > max_tracks:
+
             note = (
-                f"\n⚠️ Playlist limited to "
+                f"\n⚠️ Limited to "
                 f"{max_tracks} tracks."
             )
-        else:
-            note = ""
 
         message = await interaction.followup.send(
             f"🎧 Spotify **{content_type}** found.\n"
@@ -477,6 +512,8 @@ async def play(
         )
 
         added = 0
+        duplicates = 0
+        failed = 0
 
         for track in tracks:
 
@@ -490,7 +527,13 @@ async def play(
 
                 added += 1
 
+            except ValueError:
+
+                duplicates += 1
+
             except Exception as exc:
+
+                failed += 1
 
                 print(
                     "Spotify → YouTube error: "
@@ -501,24 +544,40 @@ async def play(
 
             await message.edit(
                 content=(
-                    "❌ None of the Spotify "
-                    "tracks could be found "
-                    "on YouTube."
+                    "❌ No new Spotify tracks "
+                    "were added.\n"
+                    f"🚫 Duplicates: {duplicates}\n"
+                    f"⚠️ Failed: {failed}"
                 )
             )
 
             return
 
-        await message.edit(
-            content=(
-                f"✅ Added **{added}** "
-                f"Spotify track(s) to queue."
-            )
+        result_text = (
+            f"✅ Added **{added}** "
+            f"Spotify track(s) to queue."
         )
 
-    # ----------------------------------------------
+        if duplicates:
+
+            result_text += (
+                f"\n🚫 Skipped "
+                f"**{duplicates}** duplicate(s)."
+            )
+
+        if failed:
+
+            result_text += (
+                f"\n⚠️ Failed: **{failed}**"
+            )
+
+        await message.edit(
+            content=result_text
+        )
+
+    # ==================================================
     # YouTube
-    # ----------------------------------------------
+    # ==================================================
 
     else:
 
@@ -529,6 +588,14 @@ async def play(
                 interaction.user.id,
                 source="YouTube",
             )
+
+        except ValueError as exc:
+
+            await interaction.followup.send(
+                f"🚫 {exc}"
+            )
+
+            return
 
         except Exception as exc:
 
@@ -561,6 +628,7 @@ async def play(
         )
 
         if song.thumbnail:
+
             embed.set_thumbnail(
                 url=song.thumbnail
             )
@@ -682,12 +750,13 @@ async def skip(
 
 # ==================================================
 # /stop
+# Admin only
 # ==================================================
 
 
 @bot.tree.command(
     name="stop",
-    description="Stop music and clear queue",
+    description="Stop music and clear queue (Admin only)",
 )
 async def stop(
     interaction: discord.Interaction,
@@ -696,6 +765,15 @@ async def stop(
     await interaction.response.defer()
 
     if not interaction.guild:
+        return
+
+    if not is_admin(interaction):
+
+        await interaction.followup.send(
+            "❌ Admin / Manage Server permission required.",
+            ephemeral=True,
+        )
+
         return
 
     player = bot.get_player(
@@ -778,6 +856,7 @@ async def queue(
     if not player.queue:
 
         if not player.current:
+
             embed.description = (
                 "The queue is empty."
             )
@@ -825,12 +904,13 @@ async def queue(
 
 # ==================================================
 # /shuffle
+# Admin only
 # ==================================================
 
 
 @bot.tree.command(
     name="shuffle",
-    description="Shuffle the queue",
+    description="Shuffle the queue (Admin only)",
 )
 async def shuffle(
     interaction: discord.Interaction,
@@ -841,6 +921,15 @@ async def shuffle(
     if not interaction.guild:
         return
 
+    if not is_admin(interaction):
+
+        await interaction.followup.send(
+            "❌ Admin / Manage Server permission required.",
+            ephemeral=True,
+        )
+
+        return
+
     player = bot.get_player(
         interaction.guild.id
     )
@@ -848,7 +937,7 @@ async def shuffle(
     if len(player.queue) < 2:
 
         await interaction.followup.send(
-            "❌ Need at least 2 songs."
+            "❌ Need at least 2 queued songs."
         )
 
         return
@@ -857,6 +946,73 @@ async def shuffle(
 
     await interaction.followup.send(
         "🔀 Queue shuffled."
+    )
+
+
+# ==================================================
+# /remove
+# Admin only
+# ==================================================
+
+
+@bot.tree.command(
+    name="remove",
+    description="Remove a song from queue (Admin only)",
+)
+@app_commands.describe(
+    position="Queue position"
+)
+async def remove(
+    interaction: discord.Interaction,
+    position: app_commands.Range[
+        int,
+        1,
+        1000,
+    ],
+):
+
+    await interaction.response.defer()
+
+    if not interaction.guild:
+        return
+
+    if not is_admin(interaction):
+
+        await interaction.followup.send(
+            "❌ Admin / Manage Server permission required.",
+            ephemeral=True,
+        )
+
+        return
+
+    player = bot.get_player(
+        interaction.guild.id
+    )
+
+    if not player.queue:
+
+        await interaction.followup.send(
+            "❌ Queue is empty."
+        )
+
+        return
+
+    index = position - 1
+
+    if index >= len(player.queue):
+
+        await interaction.followup.send(
+            f"❌ Queue only has "
+            f"**{len(player.queue)}** song(s)."
+        )
+
+        return
+
+    song = player.queue.pop(index)
+
+    await interaction.followup.send(
+        f"🗑️ Removed **{song.title}** "
+        f"from queue."
     )
 
 
@@ -885,8 +1041,11 @@ async def loop(
     player.loop = not player.loop
 
     if player.loop:
+
         text = "🔁 Loop enabled."
+
     else:
+
         text = "➡️ Loop disabled."
 
     await interaction.followup.send(
@@ -993,6 +1152,7 @@ async def nowplaying(
         )
 
     if song.thumbnail:
+
         embed.set_thumbnail(
             url=song.thumbnail
         )
@@ -1007,12 +1167,13 @@ async def nowplaying(
 
 # ==================================================
 # /clear
+# Admin only
 # ==================================================
 
 
 @bot.tree.command(
     name="clear",
-    description="Clear queued songs",
+    description="Clear queued songs (Admin only)",
 )
 async def clear(
     interaction: discord.Interaction,
@@ -1021,6 +1182,15 @@ async def clear(
     await interaction.response.defer()
 
     if not interaction.guild:
+        return
+
+    if not is_admin(interaction):
+
+        await interaction.followup.send(
+            "❌ Admin / Manage Server permission required.",
+            ephemeral=True,
+        )
+
         return
 
     player = bot.get_player(
@@ -1037,7 +1207,7 @@ async def clear(
 
 
 # ==================================================
-# Error handler
+# Error Handler
 # ==================================================
 
 
@@ -1073,13 +1243,15 @@ async def command_error(
             )
 
     except Exception:
+
         pass
 
 
 # ==================================================
-# Start bot
+# Start Bot
 # ==================================================
 
 
 if __name__ == "__main__":
+
     bot.run(TOKEN)
