@@ -19,11 +19,13 @@ PLAYLIST_RE = re.compile(
 
 
 class SpotifyManager:
+
     def __init__(
         self,
         client_id: Optional[str],
         client_secret: Optional[str],
     ):
+
         self.client = None
 
         if not client_id or not client_secret:
@@ -42,10 +44,19 @@ class SpotifyManager:
     def configured(self) -> bool:
         return self.client is not None
 
+    # ==================================================
+    # URL Detection
+    # ==================================================
+
     @staticmethod
-    def is_spotify_url(url: str) -> bool:
+    def is_spotify_url(
+        url: str,
+    ) -> bool:
+
+        url = url.strip()
+
         return any(
-            regex.match(url.strip())
+            regex.match(url)
             for regex in (
                 TRACK_RE,
                 ALBUM_RE,
@@ -53,25 +64,49 @@ class SpotifyManager:
             )
         )
 
-    def parse_url(self, url: str):
+    def parse_url(
+        self,
+        url: str,
+    ):
+
         url = url.strip()
 
         match = TRACK_RE.match(url)
+
         if match:
-            return "track", match.group(1)
+            return (
+                "track",
+                match.group(1),
+            )
 
         match = ALBUM_RE.match(url)
+
         if match:
-            return "album", match.group(1)
+            return (
+                "album",
+                match.group(1),
+            )
 
         match = PLAYLIST_RE.match(url)
+
         if match:
-            return "playlist", match.group(1)
+            return (
+                "playlist",
+                match.group(1),
+            )
 
         return None, None
 
+    # ==================================================
+    # Track cleanup
+    # ==================================================
+
     @staticmethod
-    def clean_track(track, album_name=None):
+    def clean_track(
+        track,
+        album_name=None,
+    ):
+
         if not track:
             return None
 
@@ -80,7 +115,10 @@ class SpotifyManager:
 
         artists = ", ".join(
             artist["name"]
-            for artist in track.get("artists", [])
+            for artist in track.get(
+                "artists",
+                [],
+            )
         )
 
         if not artists:
@@ -91,8 +129,12 @@ class SpotifyManager:
             "Unknown Track",
         )
 
-        album = album_name or (
-            track.get("album", {}).get(
+        album = (
+            album_name
+            or track.get(
+                "album",
+                {},
+            ).get(
                 "name",
                 "Unknown Album",
             )
@@ -119,15 +161,27 @@ class SpotifyManager:
             ),
         }
 
-    def get_track(self, track_id: str):
+    # ==================================================
+    # Spotify Track
+    # ==================================================
+
+    def get_track(
+        self,
+        track_id: str,
+    ):
+
         if not self.client:
             raise RuntimeError(
                 "Spotify is not configured."
             )
 
-        track = self.client.track(track_id)
+        track = self.client.track(
+            track_id
+        )
 
-        result = self.clean_track(track)
+        result = self.clean_track(
+            track
+        )
 
         if not result:
             raise RuntimeError(
@@ -135,6 +189,10 @@ class SpotifyManager:
             )
 
         return result
+
+    # ==================================================
+    # Spotify Album
+    # ==================================================
 
     def get_album_tracks(
         self,
@@ -146,7 +204,9 @@ class SpotifyManager:
                 "Spotify is not configured."
             )
 
-        album = self.client.album(album_id)
+        album = self.client.album(
+            album_id
+        )
 
         album_name = album.get(
             "name",
@@ -158,21 +218,31 @@ class SpotifyManager:
         tracks = album["tracks"]
 
         while True:
+
             for track in tracks["items"]:
+
                 cleaned = self.clean_track(
                     track,
                     album_name,
                 )
 
                 if cleaned:
-                    result.append(cleaned)
+                    result.append(
+                        cleaned
+                    )
 
             if not tracks.get("next"):
                 break
 
-            tracks = self.client.next(tracks)
+            tracks = self.client.next(
+                tracks
+            )
 
         return result
+
+    # ==================================================
+    # Spotify Playlist
+    # ==================================================
 
     def get_playlist_tracks(
         self,
@@ -192,20 +262,34 @@ class SpotifyManager:
         )
 
         while True:
-            for item in tracks["items"]:
-                track = item.get("track")
 
-                cleaned = self.clean_track(track)
+            for item in tracks["items"]:
+
+                track = item.get(
+                    "track"
+                )
+
+                cleaned = self.clean_track(
+                    track
+                )
 
                 if cleaned:
-                    result.append(cleaned)
+                    result.append(
+                        cleaned
+                    )
 
             if not tracks.get("next"):
                 break
 
-            tracks = self.client.next(tracks)
+            tracks = self.client.next(
+                tracks
+            )
 
         return result
+
+    # ==================================================
+    # Resolve
+    # ==================================================
 
     def resolve(
         self,
@@ -222,18 +306,27 @@ class SpotifyManager:
             )
 
         if content_type == "track":
+
             return (
                 "track",
-                [self.get_track(content_id)],
+                [
+                    self.get_track(
+                        content_id
+                    )
+                ],
             )
 
         if content_type == "album":
+
             return (
                 "album",
-                self.get_album_tracks(content_id),
+                self.get_album_tracks(
+                    content_id
+                ),
             )
 
         if content_type == "playlist":
+
             return (
                 "playlist",
                 self.get_playlist_tracks(
@@ -243,4 +336,4 @@ class SpotifyManager:
 
         raise ValueError(
             "Unsupported Spotify URL."
-      )
+        )
