@@ -24,11 +24,11 @@ FFMPEG_OPTIONS = {
         "-reconnect_streamed 1 "
         "-reconnect_delay_max 5"
     ),
-    "options": (
-        "-vn "
-        "-loglevel warning"
-    ),
+    "options": "-vn -loglevel warning",
 }
+
+# Queue empty ஆன பிறகு எத்தனை seconds wait பண்ண வேண்டும்.
+AUTO_LEAVE_DELAY = 60
 
 
 @dataclass
@@ -43,6 +43,7 @@ class Song:
 
 
 class MusicPlayer:
+
     def __init__(self, bot):
         self.bot = bot
 
@@ -62,10 +63,21 @@ class MusicPlayer:
 
         self.last_error: Optional[str] = None
 
+        # Auto leave task
+        self.auto_leave_task: Optional[
+            asyncio.Task
+        ] = None
+
+    # ==================================================
+    # Connection
+    # ==================================================
+
     async def connect(
         self,
         channel: discord.VoiceChannel,
     ):
+        self.cancel_auto_leave()
+
         if self.voice and self.voice.is_connected():
 
             if self.voice.channel != channel:
@@ -80,8 +92,13 @@ class MusicPlayer:
         return self.voice
 
     async def disconnect(self):
+
+        self.cancel_auto_leave()
+
         if self.voice:
+
             try:
+
                 if (
                     self.voice.is_playing()
                     or self.voice.is_paused()
@@ -93,6 +110,7 @@ class MusicPlayer:
                 )
 
             except Exception as exc:
+
                 print(
                     f"Disconnect error: {exc}"
                 )
@@ -101,6 +119,74 @@ class MusicPlayer:
         self.current = None
         self.queue.clear()
         self.loop = False
+
+    # ==================================================
+    # Auto Leave
+    # ==================================================
+
+    def cancel_auto_leave(self):
+
+        if (
+            self.auto_leave_task
+            and not self.auto_leave_task.done()
+        ):
+            self.auto_leave_task.cancel()
+
+        self.auto_leave_task = None
+
+    def schedule_auto_leave(self):
+
+        self.cancel_auto_leave()
+
+        self.auto_leave_task = (
+            asyncio.create_task(
+                self._auto_leave()
+            )
+        )
+
+    async def _auto_leave(self):
+
+        try:
+
+            await asyncio.sleep(
+                AUTO_LEAVE_DELAY
+            )
+
+            if not self.voice:
+                return
+
+            if not self.voice.is_connected():
+                return
+
+            # New song started while waiting.
+            if (
+                self.current
+                or self.queue
+                or self.voice.is_playing()
+                or self.voice.is_paused()
+            ):
+                return
+
+            print(
+                "Queue empty. Auto leaving voice channel."
+            )
+
+            await self.disconnect()
+
+        except asyncio.CancelledError:
+            pass
+
+        except Exception as exc:
+            print(
+                f"Auto leave error: {exc}"
+            )
+
+        finally:
+            self.auto_leave_task = None
+
+    # ==================================================
+    # YouTube extraction
+    # ==================================================
 
     async def extract_song(
         self,
@@ -119,6 +205,7 @@ class MusicPlayer:
         loop = asyncio.get_running_loop()
 
         def extract():
+
             with yt_dlp.YoutubeDL(
                 options
             ) as ytdl:
@@ -139,6 +226,7 @@ class MusicPlayer:
             )
 
         if "entries" in info:
+
             entries = [
                 item
                 for item in info["entries"]
@@ -179,6 +267,66 @@ class MusicPlayer:
             source=source,
         )
 
+    # ==================================================
+    # Duplicate Protection
+    # ==================================================
+
+    @staticmethod
+    def normalize_title(
+        title: str,
+    ) -> str:
+
+        return " ".join(
+            title.lower().split()
+        )
+
+    def is_duplicate(
+        self,
+        song: Song,
+    ) -> bool:
+
+        # Check current song
+        if self.current:
+
+            if (
+                song.webpage_url
+                and self.current.webpage_url
+                == song.webpage_url
+            ):
+                return True
+
+            if (
+                self.normalize_title(
+                    song.title
+                )
+                == self.normalize_title(
+                    self.current.title
+                )
+            ):
+                return True
+
+        # Check queue
+        for queued in self.queue:
+
+            if (
+                song.webpage_url
+                and queued.webpage_url
+                == song.webpage_url
+            ):
+                return True
+
+            if (
+                self.normalize_title(
+                    song.title
+                )
+                == self.normalize_title(
+                    queued.title
+                )
+            ):
+                return True
+
+        return False
+
     async def add(
         self,
         query: str,
@@ -192,11 +340,24 @@ class MusicPlayer:
             source,
         )
 
+        if self.is_duplicate(song):
+
+            raise ValueError(
+                f"Duplicate song: {song.title}"
+            )
+
+        self.cancel_auto_leave()
+
         self.queue.append(song)
 
         return song
 
+    # ==================================================
+    # Playback
+    # ==================================================
+
     async def start(self):
+
         if not self.voice:
             return
 
@@ -211,8 +372,13 @@ class MusicPlayer:
 
         await self.play_next()
 
-    def after_play(self, error):
+    def after_play(
+        self,
+        error,
+    ):
+
         if error:
+
             print(
                 f"FFmpeg/player error: {error}"
             )
@@ -223,14 +389,19 @@ class MusicPlayer:
         )
 
         def callback(f):
+
             try:
                 f.result()
+
             except Exception as exc:
+
                 print(
                     f"Next-song error: {exc}"
                 )
 
-        future.add_done_callback(callback)
+        future.add_done_callback(
+            callback
+        )
 
     async def play_song(
         self,
@@ -263,69 +434,96 @@ class MusicPlayer:
 
     async def play_next(self):
 
-        async with self.lock:
+        while True:
 
-            if not self.voice:
-                return
+            async with self.lock:
 
-            if not self.voice.is_connected():
-                return
-
-            if (
-                self.voice.is_playing()
-                or self.voice.is_paused()
-            ):
-                return
-
-            if (
-                self.current
-                and self.loop
-            ):
-                song = self.current
-
-            else:
-                if not self.queue:
-                    self.current = None
+                if not self.voice:
                     return
 
-                song = self.queue.pop(0)
+                if not self.voice.is_connected():
+                    return
 
-            try:
-                await self.play_song(song)
+                if (
+                    self.voice.is_playing()
+                    or self.voice.is_paused()
+                ):
+                    return
 
-            except Exception as exc:
-                self.last_error = str(exc)
+                # Loop current song
+                if (
+                    self.current
+                    and self.loop
+                ):
 
-                print(
-                    f"Playback error: {exc}"
-                )
+                    song = self.current
 
-                self.current = None
+                else:
 
-                if self.queue:
-                    await self.play_next()
+                    if not self.queue:
+
+                        self.current = None
+
+                        # Queue empty -> auto leave
+                        self.schedule_auto_leave()
+
+                        return
+
+                    song = self.queue.pop(0)
+
+                try:
+
+                    await self.play_song(
+                        song
+                    )
+
+                    return
+
+                except Exception as exc:
+
+                    self.last_error = str(exc)
+
+                    print(
+                        f"Playback error: {exc}"
+                    )
+
+                    self.current = None
+
+                    # Try next queued song.
+                    continue
+
+    # ==================================================
+    # Controls
+    # ==================================================
 
     async def pause(self) -> bool:
+
         if (
             self.voice
             and self.voice.is_playing()
         ):
+
             self.voice.pause()
+
             return True
 
         return False
 
     async def resume(self) -> bool:
+
         if (
             self.voice
             and self.voice.is_paused()
         ):
+
             self.voice.resume()
+
             return True
 
         return False
 
     async def skip(self) -> bool:
+
         if (
             self.voice
             and (
@@ -333,12 +531,15 @@ class MusicPlayer:
                 or self.voice.is_paused()
             )
         ):
+
             self.voice.stop()
+
             return True
 
         return False
 
     async def stop(self):
+
         self.loop = False
         self.queue.clear()
 
@@ -349,12 +550,20 @@ class MusicPlayer:
                 or self.voice.is_paused()
             )
         ):
+
             self.voice.stop()
 
         self.current = None
 
+        # Start auto leave countdown.
+        if self.voice:
+            self.schedule_auto_leave()
+
     def shuffle(self):
-        random.shuffle(self.queue)
+
+        random.shuffle(
+            self.queue
+        )
 
     def set_volume(
         self,
@@ -363,10 +572,15 @@ class MusicPlayer:
 
         percentage = max(
             0,
-            min(percentage, 100),
+            min(
+                percentage,
+                100,
+            ),
         )
 
-        self.volume = percentage / 100
+        self.volume = (
+            percentage / 100
+        )
 
         if (
             self.voice
@@ -376,6 +590,7 @@ class MusicPlayer:
                 discord.PCMVolumeTransformer,
             )
         ):
+
             self.voice.source.volume = (
                 self.volume
             )
