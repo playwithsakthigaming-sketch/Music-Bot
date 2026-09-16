@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from music import MusicPlayer
 from spotify import SpotifyManager
+from radio import get_radio_stations
 
 
 # ==================================================
@@ -17,7 +18,9 @@ from spotify import SpotifyManager
 
 load_dotenv()
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv(
+    "DISCORD_TOKEN"
+)
 
 SPOTIFY_CLIENT_ID = os.getenv(
     "SPOTIFY_CLIENT_ID"
@@ -27,10 +30,12 @@ SPOTIFY_CLIENT_SECRET = os.getenv(
     "SPOTIFY_CLIENT_SECRET"
 )
 
-GUILD_ID = os.getenv("GUILD_ID")
-
+GUILD_ID = os.getenv(
+    "GUILD_ID"
+)
 
 if not TOKEN:
+
     raise RuntimeError(
         "DISCORD_TOKEN is missing."
     )
@@ -127,7 +132,6 @@ bot = MusicBot()
 # Helpers
 # ==================================================
 
-
 def get_voice_channel(
     interaction: discord.Interaction,
 ) -> Optional[discord.VoiceChannel]:
@@ -149,6 +153,7 @@ def get_voice_channel(
         channel,
         discord.VoiceChannel,
     ):
+
         return channel
 
     return None
@@ -184,7 +189,9 @@ async def get_player_for_interaction(
 
     try:
 
-        await player.connect(channel)
+        await player.connect(
+            channel
+        )
 
     except Exception as exc:
 
@@ -236,6 +243,7 @@ def is_admin(
         interaction.user,
         discord.Member,
     ):
+
         return False
 
     permissions = (
@@ -249,11 +257,143 @@ def is_admin(
 
 
 # ==================================================
+# Radio Dropdown
+# ==================================================
+
+class RadioSelect(
+    discord.ui.Select
+):
+
+    def __init__(
+        self,
+        guild_id: int,
+    ):
+
+        self.guild_id = guild_id
+
+        stations = get_radio_stations()
+
+        options = []
+
+        for station_id, station in stations.items():
+
+            options.append(
+                discord.SelectOption(
+                    label=station["name"][:100],
+                    value=station_id,
+                    emoji="📻",
+                )
+            )
+
+        super().__init__(
+            placeholder="📻 Select Tamil Radio",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+
+    async def callback(
+        self,
+        interaction: discord.Interaction,
+    ):
+
+        station_id = self.values[0]
+
+        station = get_radio_stations().get(
+            station_id
+        )
+
+        if not station:
+
+            await interaction.response.send_message(
+                "❌ Radio station not found.",
+                ephemeral=True,
+            )
+
+            return
+
+        # ==========================================
+        # User must be in voice
+        # ==========================================
+
+        channel = get_voice_channel(
+            interaction
+        )
+
+        if not channel:
+
+            await interaction.response.send_message(
+                "❌ First join a voice channel.",
+                ephemeral=True,
+            )
+
+            return
+
+        player = bot.get_player(
+            self.guild_id
+        )
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        try:
+
+            await player.connect(
+                channel
+            )
+
+            # ======================================
+            # Change radio
+            # ======================================
+
+            player.queue.clear()
+
+            await player.play_radio(
+                station_id
+            )
+
+            await interaction.followup.send(
+                f"📻 Now playing **{station['name']}**",
+                ephemeral=True,
+            )
+
+        except Exception as exc:
+
+            await interaction.followup.send(
+                "❌ Could not play radio.\n"
+                f"`{exc}`",
+                ephemeral=True,
+            )
+
+
+class RadioView(
+    discord.ui.View
+):
+
+    def __init__(
+        self,
+        guild_id: int,
+    ):
+
+        super().__init__(
+            timeout=300
+        )
+
+        self.add_item(
+            RadioSelect(
+                guild_id
+            )
+        )
+
+
+# ==================================================
 # Player Buttons
 # ==================================================
 
-
-class PlayerView(discord.ui.View):
+class PlayerView(
+    discord.ui.View
+):
 
     def __init__(
         self,
@@ -271,6 +411,10 @@ class PlayerView(discord.ui.View):
         return bot.get_player(
             self.guild_id
         )
+
+    # ==================================================
+    # Pause
+    # ==================================================
 
     @discord.ui.button(
         emoji="⏸️",
@@ -298,6 +442,10 @@ class PlayerView(discord.ui.View):
                 ephemeral=True,
             )
 
+    # ==================================================
+    # Resume
+    # ==================================================
+
     @discord.ui.button(
         emoji="▶️",
         style=discord.ButtonStyle.success,
@@ -324,6 +472,10 @@ class PlayerView(discord.ui.View):
                 ephemeral=True,
             )
 
+    # ==================================================
+    # Skip
+    # ==================================================
+
     @discord.ui.button(
         emoji="⏭️",
         style=discord.ButtonStyle.secondary,
@@ -349,6 +501,10 @@ class PlayerView(discord.ui.View):
                 "❌ Nothing is playing.",
                 ephemeral=True,
             )
+
+    # ==================================================
+    # Shuffle
+    # ==================================================
 
     @discord.ui.button(
         emoji="🔀",
@@ -387,6 +543,10 @@ class PlayerView(discord.ui.View):
             ephemeral=True,
         )
 
+    # ==================================================
+    # Loop
+    # ==================================================
+
     @discord.ui.button(
         emoji="🔁",
         style=discord.ButtonStyle.secondary,
@@ -417,17 +577,12 @@ class PlayerView(discord.ui.View):
 # /play
 # ==================================================
 
-
 @bot.tree.command(
     name="play",
-    description=(
-        "Play YouTube music or Spotify tracks"
-    ),
+    description="Play YouTube music or Spotify tracks",
 )
 @app_commands.describe(
-    query=(
-        "YouTube URL/search or Spotify URL"
-    )
+    query="YouTube URL/search or Spotify URL"
 )
 async def play(
     interaction: discord.Interaction,
@@ -488,10 +643,11 @@ async def play(
 
             return
 
-        # Safety limit
         max_tracks = 100
 
-        original_count = len(tracks)
+        original_count = len(
+            tracks
+        )
 
         tracks = tracks[:max_tracks]
 
@@ -644,9 +800,31 @@ async def play(
 
 
 # ==================================================
-# /pause
+# /radio
 # ==================================================
 
+@bot.tree.command(
+    name="radio",
+    description="Choose a Tamil radio station",
+)
+async def radio(
+    interaction: discord.Interaction,
+):
+
+    await interaction.response.send_message(
+        "📻 **Tamil Radio**\n"
+        "Select a station from the dropdown:",
+        view=RadioView(
+            interaction.guild.id
+            if interaction.guild
+            else 0
+        ),
+    )
+
+
+# ==================================================
+# /pause
+# ==================================================
 
 @bot.tree.command(
     name="pause",
@@ -682,7 +860,6 @@ async def pause(
 # /resume
 # ==================================================
 
-
 @bot.tree.command(
     name="resume",
     description="Resume paused music",
@@ -717,7 +894,6 @@ async def resume(
 # /skip
 # ==================================================
 
-
 @bot.tree.command(
     name="skip",
     description="Skip current song",
@@ -750,13 +926,11 @@ async def skip(
 
 # ==================================================
 # /stop
-# Admin only
 # ==================================================
-
 
 @bot.tree.command(
     name="stop",
-    description="Stop music and clear queue (Admin only)",
+    description="Stop music and radio (Admin only)",
 )
 async def stop(
     interaction: discord.Interaction,
@@ -783,14 +957,13 @@ async def stop(
     await player.stop()
 
     await interaction.followup.send(
-        "⏹️ Stopped and cleared the queue."
+        "⏹️ Stopped music/radio and cleared queue."
     )
 
 
 # ==================================================
 # /leave
 # ==================================================
-
 
 @bot.tree.command(
     name="leave",
@@ -820,7 +993,6 @@ async def leave(
 # /queue
 # ==================================================
 
-
 @bot.tree.command(
     name="queue",
     description="Show the music queue",
@@ -842,7 +1014,17 @@ async def queue(
         title="📜 Music Queue"
     )
 
-    if player.current:
+    if player.radio_mode:
+
+        embed.add_field(
+            name="📻 Radio",
+            value=(
+                f"**{player.radio_title or 'Tamil Radio'}**"
+            ),
+            inline=False,
+        )
+
+    elif player.current:
 
         embed.add_field(
             name="▶️ Now Playing",
@@ -855,7 +1037,7 @@ async def queue(
 
     if not player.queue:
 
-        if not player.current:
+        if not player.current and not player.radio_mode:
 
             embed.description = (
                 "The queue is empty."
@@ -904,9 +1086,7 @@ async def queue(
 
 # ==================================================
 # /shuffle
-# Admin only
 # ==================================================
-
 
 @bot.tree.command(
     name="shuffle",
@@ -951,9 +1131,7 @@ async def shuffle(
 
 # ==================================================
 # /remove
-# Admin only
 # ==================================================
-
 
 @bot.tree.command(
     name="remove",
@@ -1008,7 +1186,9 @@ async def remove(
 
         return
 
-    song = player.queue.pop(index)
+    song = player.queue.pop(
+        index
+    )
 
     await interaction.followup.send(
         f"🗑️ Removed **{song.title}** "
@@ -1019,7 +1199,6 @@ async def remove(
 # ==================================================
 # /loop
 # ==================================================
-
 
 @bot.tree.command(
     name="loop",
@@ -1057,7 +1236,6 @@ async def loop(
 # /volume
 # ==================================================
 
-
 @bot.tree.command(
     name="volume",
     description="Set volume from 0 to 100",
@@ -1083,7 +1261,9 @@ async def volume(
         interaction.guild.id
     )
 
-    player.set_volume(level)
+    player.set_volume(
+        level
+    )
 
     await interaction.followup.send(
         f"🔊 Volume: **{level}%**"
@@ -1094,10 +1274,9 @@ async def volume(
 # /nowplaying
 # ==================================================
 
-
 @bot.tree.command(
     name="nowplaying",
-    description="Show current song",
+    description="Show current song/radio",
 )
 async def nowplaying(
     interaction: discord.Interaction,
@@ -1111,6 +1290,38 @@ async def nowplaying(
     player = bot.get_player(
         interaction.guild.id
     )
+
+    # ==============================================
+    # Radio
+    # ==============================================
+
+    if player.radio_mode:
+
+        embed = discord.Embed(
+            title="📻 Now Playing",
+            description=(
+                f"**{player.radio_title or 'Tamil Radio'}**"
+            ),
+        )
+
+        embed.add_field(
+            name="Type",
+            value="Tamil Radio",
+            inline=True,
+        )
+
+        await interaction.followup.send(
+            embed=embed,
+            view=RadioView(
+                interaction.guild.id
+            ),
+        )
+
+        return
+
+    # ==============================================
+    # Song
+    # ==============================================
 
     song = player.current
 
@@ -1167,9 +1378,7 @@ async def nowplaying(
 
 # ==================================================
 # /clear
-# Admin only
 # ==================================================
-
 
 @bot.tree.command(
     name="clear",
@@ -1197,7 +1406,9 @@ async def clear(
         interaction.guild.id
     )
 
-    count = len(player.queue)
+    count = len(
+        player.queue
+    )
 
     player.queue.clear()
 
@@ -1209,7 +1420,6 @@ async def clear(
 # ==================================================
 # Error Handler
 # ==================================================
-
 
 @bot.tree.error
 async def command_error(
@@ -1251,7 +1461,8 @@ async def command_error(
 # Start Bot
 # ==================================================
 
-
 if __name__ == "__main__":
 
-    bot.run(TOKEN)
+    bot.run(
+        TOKEN
+    )
