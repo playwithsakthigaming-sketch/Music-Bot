@@ -3,9 +3,9 @@
 # ==================================================
 
 RADIO_STATIONS = {
-    "hello_fm": {
-        "name": "Hello FM 106.4",
-        "url": "https://strw1.openstream.co/1313?aw_0_1st.collectionid%3D4428%26stationId%3D4428%26publisherId%3D1337%26k%3D1692506589",
+    "suriyan_fm": {
+        "name": "Suriyan FM 93.5",
+        "url": "https://tamil.crabdance.com:8002/2",
     },
     
     "radio_2": {
@@ -13,9 +13,9 @@ RADIO_STATIONS = {
         "url": "https://radio.lotustechnologieslk.net:8006/;stream.mp3",
     },
 
-    "radio_3": {
-        "name": "Tamil Radio 3",
-        "url": "YOUR_DIRECT_STREAM_URL_3",
+    "Radio_city": {
+        "name": "Radio City 91.1",
+        "url": "http://163.172.158.94:8064/;stream.mp3",
     },
 
     "radio_4": {
