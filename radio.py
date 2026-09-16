@@ -20,17 +20,17 @@ RADIO_STATIONS = {
 
     "radio_4": {
         "name": "Tamil Radio 4",
-        "url": "YOUR_DIRECT_STREAM_URL_4",
+        "url": "http://163.172.158.94:8052/;stream.mp3",
     },
 
     "radio_5": {
         "name": "Tamil Radio 5",
-        "url": "YOUR_DIRECT_STREAM_URL_5",
+        "url": "http://163.172.158.94:8048/;stream.mp3",
     },
 
     "radio_6": {
         "name": "Tamil Radio 6",
-        "url": "YOUR_DIRECT_STREAM_URL_6",
+        "url": "http://163.172.158.94:8052/;stream.mp3",
     },
 }
 
