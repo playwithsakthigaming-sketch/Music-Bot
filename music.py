@@ -6,6 +6,10 @@ from typing import Optional
 import discord
 import yt_dlp
 
+from radio import (
+    get_radio_station,
+)
+
 
 # ==================================================
 # yt-dlp
@@ -15,25 +19,21 @@ YTDL_OPTIONS = {
     "format": "bestaudio[ext=webm]/bestaudio/best",
     "noplaylist": True,
 
-    # Better YouTube compatibility
     "quiet": True,
     "no_warnings": True,
     "ignoreerrors": False,
 
     "default_search": "ytsearch1",
 
-    # Railway/container networking
     "source_address": "0.0.0.0",
 
     "skip_download": True,
     "extract_flat": False,
 
-    # Avoid unnecessary metadata requests
     "socket_timeout": 15,
     "retries": 3,
     "fragment_retries": 3,
 
-    # YouTube client selection
     "extractor_args": {
         "youtube": {
             "player_client": [
@@ -45,7 +45,24 @@ YTDL_OPTIONS = {
 }
 
 
+# ==================================================
+# FFmpeg
+# ==================================================
+
 FFMPEG_OPTIONS = {
+    "before_options": (
+        "-reconnect 1 "
+        "-reconnect_streamed 1 "
+        "-reconnect_delay_max 5"
+    ),
+    "options": (
+        "-vn "
+        "-loglevel warning"
+    ),
+}
+
+
+RADIO_FFMPEG_OPTIONS = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
@@ -64,7 +81,6 @@ AUTO_LEAVE_DELAY = 60
 # ==================================================
 # Song
 # ==================================================
-
 
 @dataclass
 class Song:
@@ -87,7 +103,6 @@ class Song:
 # ==================================================
 # Music Player
 # ==================================================
-
 
 class MusicPlayer:
 
@@ -114,6 +129,16 @@ class MusicPlayer:
         self.auto_leave_task: Optional[
             asyncio.Task
         ] = None
+
+        # ==========================================
+        # Radio state
+        # ==========================================
+
+        self.selected_radio: Optional[str] = None
+
+        self.radio_mode = False
+
+        self.radio_title: Optional[str] = None
 
     # ==================================================
     # Voice connection
@@ -145,9 +170,16 @@ class MusicPlayer:
 
         return self.voice
 
+    # ==================================================
+    # Disconnect
+    # ==================================================
+
     async def disconnect(self):
 
         self.cancel_auto_leave()
+
+        self.radio_mode = False
+        self.selected_radio = self.selected_radio
 
         if self.voice:
 
@@ -178,8 +210,10 @@ class MusicPlayer:
 
         self.loop = False
 
+        self.radio_mode = False
+
     # ==================================================
-    # Auto leave
+    # Auto Leave
     # ==================================================
 
     def cancel_auto_leave(self):
@@ -220,6 +254,7 @@ class MusicPlayer:
             if (
                 self.current
                 or self.queue
+                or self.radio_mode
                 or self.voice.is_playing()
                 or self.voice.is_paused()
             ):
@@ -260,7 +295,6 @@ class MusicPlayer:
 
         original_query = query.strip()
 
-        # Search by song name
         if not original_query.startswith(
             (
                 "http://",
@@ -308,10 +342,7 @@ class MusicPlayer:
 
                     raise RuntimeError(
                         "YouTube blocked this request "
-                        "because of bot detection. "
-                        "Please try another song/URL "
-                        "or configure YouTube cookies "
-                        "for the Railway service."
+                        "because of bot detection."
                     ) from exc
 
                 raise
@@ -327,7 +358,6 @@ class MusicPlayer:
                 "No YouTube result found."
             )
 
-        # Search result
         if "entries" in info:
 
             entries = [
@@ -445,7 +475,7 @@ class MusicPlayer:
         return False
 
     # ==================================================
-    # Add song
+    # Add Song
     # ==================================================
 
     async def add(
@@ -473,6 +503,26 @@ class MusicPlayer:
             song
         )
 
+        # ==========================================
+        # If radio is playing, stop radio.
+        # Song will start automatically.
+        # ==========================================
+
+        if self.radio_mode:
+
+            self.radio_mode = False
+            self.current = None
+
+            if (
+                self.voice
+                and (
+                    self.voice.is_playing()
+                    or self.voice.is_paused()
+                )
+            ):
+
+                self.voice.stop()
+
         return song
 
     # ==================================================
@@ -487,6 +537,10 @@ class MusicPlayer:
         if not self.voice.is_connected():
             return
 
+        if self.radio_mode:
+
+            return
+
         if (
             self.voice.is_playing()
             or self.voice.is_paused()
@@ -497,7 +551,7 @@ class MusicPlayer:
         await self.play_next()
 
     # ==================================================
-    # After playback
+    # Playback callback
     # ==================================================
 
     def after_play(
@@ -537,7 +591,7 @@ class MusicPlayer:
         )
 
     # ==================================================
-    # Play song
+    # Play Song
     # ==================================================
 
     async def play_song(
@@ -550,6 +604,8 @@ class MusicPlayer:
 
         if not self.voice.is_connected():
             return
+
+        self.radio_mode = False
 
         ffmpeg = discord.FFmpegPCMAudio(
             song.stream_url,
@@ -577,29 +633,139 @@ class MusicPlayer:
         )
 
     # ==================================================
-    # Play next
+    # Play Radio
+    # ==================================================
+
+    async def play_radio(
+        self,
+        station_id: Optional[str] = None,
+    ):
+
+        if station_id:
+
+            self.selected_radio = station_id
+
+        if not self.selected_radio:
+
+            print(
+                "No radio station selected."
+            )
+
+            return
+
+        station = get_radio_station(
+            self.selected_radio
+        )
+
+        if not station:
+
+            print(
+                "Radio station not found."
+            )
+
+            return
+
+        if not station.get("url"):
+
+            print(
+                f"Radio URL missing: "
+                f"{station['name']}"
+            )
+
+            return
+
+        if not self.voice:
+            return
+
+        if not self.voice.is_connected():
+            return
+
+        self.cancel_auto_leave()
+
+        self.radio_mode = True
+
+        self.current = None
+
+        self.radio_title = station[
+            "name"
+        ]
+
+        # ==========================================
+        # Stop current source
+        # ==========================================
+
+        if (
+            self.voice.is_playing()
+            or self.voice.is_paused()
+        ):
+
+            self.voice.stop()
+
+            await asyncio.sleep(
+                0.2
+            )
+
+        # ==========================================
+        # Radio FFmpeg
+        # ==========================================
+
+        ffmpeg = discord.FFmpegPCMAudio(
+            station["url"],
+            **RADIO_FFMPEG_OPTIONS,
+        )
+
+        source = (
+            discord.PCMVolumeTransformer(
+                ffmpeg,
+                volume=self.volume,
+            )
+        )
+
+        self.voice.play(
+            source,
+            after=self.after_play,
+        )
+
+        print(
+            f"Now playing radio: "
+            f"{station['name']}"
+        )
+
+    # ==================================================
+    # Play Next
     # ==================================================
 
     async def play_next(self):
 
-        while True:
+        async with self.lock:
 
-            async with self.lock:
+            if not self.voice:
+                return
 
-                if not self.voice:
-                    return
+            if not self.voice.is_connected():
+                return
 
-                if not self.voice.is_connected():
-                    return
+            if (
+                self.voice.is_playing()
+                or self.voice.is_paused()
+            ):
 
-                if (
-                    self.voice.is_playing()
-                    or self.voice.is_paused()
-                ):
+                return
 
-                    return
+            # ======================================
+            # Queue has a song
+            # ======================================
 
+            if self.queue:
+
+                self.radio_mode = False
+
+                song = None
+
+                # ==================================
                 # Loop current song
+                # ==================================
+
                 if (
                     self.current
                     and self.loop
@@ -608,14 +774,6 @@ class MusicPlayer:
                     song = self.current
 
                 else:
-
-                    if not self.queue:
-
-                        self.current = None
-
-                        self.schedule_auto_leave()
-
-                        return
 
                     song = self.queue.pop(
                         0
@@ -641,7 +799,37 @@ class MusicPlayer:
 
                     self.current = None
 
-                    continue
+                    # Try next song
+                    return await self.play_next()
+
+            # ======================================
+            # Queue empty → Radio
+            # ======================================
+
+            self.current = None
+
+            if self.selected_radio:
+
+                try:
+
+                    await self.play_radio()
+
+                    return
+
+                except Exception as exc:
+
+                    print(
+                        f"Radio playback error: "
+                        f"{exc}"
+                    )
+
+                    self.radio_mode = False
+
+            # ======================================
+            # Nothing
+            # ======================================
+
+            self.schedule_auto_leave()
 
     # ==================================================
     # Pause
@@ -707,6 +895,10 @@ class MusicPlayer:
 
         self.queue.clear()
 
+        self.radio_mode = False
+
+        self.current = None
+
         if (
             self.voice
             and (
@@ -716,8 +908,6 @@ class MusicPlayer:
         ):
 
             self.voice.stop()
-
-        self.current = None
 
         if self.voice:
 
