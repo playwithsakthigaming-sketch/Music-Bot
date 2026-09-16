@@ -3,11 +3,11 @@
 # ==================================================
 
 RADIO_STATIONS = {
-    "radio_1": {
-        "name": "Tamil Radio 1",
-        "url": "http://163.172.158.94:8048/;stream.mp3",
+    "hello_fm": {
+        "name": "Hello FM 106.4",
+        "url": "https://strw1.openstream.co/1313?aw_0_1st.collectionid%3D4428%26stationId%3D4428%26publisherId%3D1337%26k%3D1692506589",
     },
-
+    
     "radio_2": {
         "name": "Tamil Radio 2",
         "url": "YOUR_DIRECT_STREAM_URL_2",
