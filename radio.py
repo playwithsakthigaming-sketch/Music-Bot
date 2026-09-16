@@ -10,7 +10,7 @@ RADIO_STATIONS = {
     
     "radio_2": {
         "name": "Tamil Radio 2",
-        "url": "YOUR_DIRECT_STREAM_URL_2",
+        "url": "https://radio.lotustechnologieslk.net:8006/;stream.mp3",
     },
 
     "radio_3": {
