@@ -5,7 +5,7 @@
 RADIO_STATIONS = {
     "radio_1": {
         "name": "Tamil Radio 1",
-        "url": "YOUR_DIRECT_STREAM_URL_1",
+        "url": "http://163.172.158.94:8048/;stream.mp3",
     },
 
     "radio_2": {
