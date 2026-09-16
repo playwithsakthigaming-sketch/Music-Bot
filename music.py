@@ -19,26 +19,30 @@ YTDL_OPTIONS = {
     "format": "bestaudio[ext=webm]/bestaudio/best",
     "noplaylist": True,
 
+    # Better YouTube compatibility
     "quiet": True,
     "no_warnings": True,
     "ignoreerrors": False,
 
     "default_search": "ytsearch1",
 
+    # Railway/container networking
     "source_address": "0.0.0.0",
 
     "skip_download": True,
     "extract_flat": False,
 
+    # Avoid unnecessary metadata requests
     "socket_timeout": 15,
     "retries": 3,
     "fragment_retries": 3,
 
+    # YouTube client selection
     "extractor_args": {
         "youtube": {
             "player_client": [
-                "tv",
-                "web_safari",
+                "android",
+                "web",
             ],
         }
     },
