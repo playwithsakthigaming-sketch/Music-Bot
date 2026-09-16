@@ -37,8 +37,8 @@ YTDL_OPTIONS = {
     "extractor_args": {
         "youtube": {
             "player_client": [
-                "android",
-                "web",
+                "tv",
+                "web_safari",
             ],
         }
     },
